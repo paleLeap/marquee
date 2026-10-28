@@ -12,7 +12,7 @@ a = Analysis(
     [str(root / "marquee.py")],
     pathex=[str(root)],
     datas=[(str(root / name), ".") for name in ("ui.html", "theme.json", "icon.svg")],
-    hiddenimports=["webwindow", "tzdata"],
+    hiddenimports=["webwindow", "rules", "tzdata"],
     excludes=["tkinter", "gi", "cairo"],
 )
 pyz = PYZ(a.pure)

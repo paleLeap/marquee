@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 
 import listings
+import rules
 import sources
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -361,9 +362,22 @@ class Scanner:
             threading.Thread(target=self.sort, daemon=True).start()
 
     def sort(self):
-        """File and rate every listing not yet sorted, in batches, four Claude runs at a time."""
+        """File and rate every listing not yet sorted, in batches, four Claude runs at a time.
+        Without Claude Code, or when a Claude run fails, the batch is sorted by word rules
+        (rules.py) instead: free and instant, rougher. Those answers are not kept in triage.json,
+        so the listing gets Claude's answer on a later read once Claude works."""
+        def by_claude(batch):
+            try:
+                return (*sources.triage(batch, model=settings().get("triage_model") or "haiku"), None)
+            except RuntimeError as exc:           # not signed in, a timeout, an odd answer
+                return (*rules.triage(batch), str(exc))
+
+        def by_rules(batch):
+            return (*rules.triage(batch), None)
+
         def job():
-            s, spent = settings(), 0.0
+            spent, failed, ruled = 0.0, None, set()
+            claude = sources.claude_installed()
             while True:
                 todo = [e for e in store()["events"].values()
                         if e["id"].startswith(LISTING_PREFIXES) and e.get("score") is None][:480]
@@ -371,16 +385,19 @@ class Scanner:
                     break
                 batches = [todo[i:i + 120] for i in range(0, len(todo), 120)]
                 with ThreadPoolExecutor(max_workers=4) as pool:
-                    results = list(pool.map(lambda b: sources.triage(b, model=s.get("triage_model") or "haiku"), batches))
+                    results = list(pool.map(by_claude if claude else by_rules, batches))
                 got = {}
-                for r, cost in results:
+                for (r, cost, error), batch in zip(results, batches):
                     got.update(r)
                     spent += cost
+                    if error or not claude:
+                        ruled.update(e["id"] for e in batch)
+                    failed = failed or error
                 for e in todo:                            # anything the run skipped counts as ordinary
                     got.setdefault(e["id"], (e["category"], 1))
                 with lock:
                     cache = read_json(TRIAGE, {})
-                    cache.update({k: list(v) for k, v in got.items()})
+                    cache.update({k: list(v) for k, v in got.items() if k not in ruled})
                     live = {e["id"] for e in store()["events"].values()}
                     write_json(TRIAGE, {k: v for k, v in cache.items() if k in live or k in got})
                     d = store()
@@ -389,7 +406,10 @@ class Scanner:
                             d["events"][k]["category"], d["events"][k]["score"] = cat, score
                     write_json(EVENTS, d)
                 self.say("events", None)
-            self._record("sorting", count=None, cost=round(spent, 3))
+            if failed:
+                failed = f"{failed} Sorted by word rules instead."
+                self.say("scan_error", {"name": "sorting", "error": failed})
+            self._record("sorting", count=None, cost=round(spent, 3), error=failed)
         self._run("sorting", job)
 
     def all(self, which=("lists", "tm"), wait=False):

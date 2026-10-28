@@ -370,6 +370,10 @@ def _claude():
     return shutil.which("claude") or os.path.join(os.path.expanduser("~"), ".local", "bin", exe)
 
 
+def claude_installed():
+    return os.path.exists(_claude())
+
+
 def _run_claude(cmd, prompt, timeout):
     """One `claude -p` run. The prompt goes in on stdin, not as an argument: a sorting prompt is
     about 40,000 characters and Windows refuses a command line over 32,767."""

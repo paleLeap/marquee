@@ -35,10 +35,14 @@ No frame, dark slate, thin type. Drag it from any bare spot, resize it from the 
 
 ## Where events come from
 
+Marquee runs on its own: the listing sites, Ticketmaster and the sorting need nothing else
+installed. [Claude Code](https://claude.com/claude-code) is an optional extra that sorts more
+accurately and adds a web search for things no listing site has.
+
 | Source | Covers | Needs | Cost |
 |---|---|---|---|
 | Listing sites: Eventbrite, AllEvents, Meetup | the bulk: hundreds of events a day, small, niche and one-off things | nothing | free; read day by day for 14 days, every 12 hours, a few minutes each |
-| Sorting | files each new listing under a category and rates it 0 to 3; 0 (job fairs, seminars, ads) is hidden, 3 gets a ✦ | [Claude Code](https://claude.com/claude-code), signed in | Claude Haiku, about $0.10 per 120 new events. Without Claude Code, listings still show, unsorted. |
+| Sorting | files each new listing under a category and rates it 0 to 3; 0 (job fairs, trainings, networking, seminars) is hidden, 3 gets a ✦ | nothing: built-in word rules. With [Claude Code](https://claude.com/claude-code) installed and signed in, Claude Haiku does it instead, more accurately | free; with Claude Haiku about $0.10 per 120 new events |
 | Ticketmaster | concerts, sports, theatre, family shows, with prices | a free key: sign up at [developer.ticketmaster.com](https://developer-acct.ticketmaster.com/user/register), then copy the Consumer Key from My Apps into Settings | free |
 | Web search | ten searches: exhibits, cars and racing, music, sports, stage, festivals, food and drink, expos, outdoors, offbeat | Claude Code, signed in | **off until you tick searches in Settings**. Claude Sonnet, about $1.50 per search, 2 to 8 minutes each, repeated every 7 days |
 
@@ -78,6 +82,7 @@ when Claude Code is used). It is kept in:
 | `webwindow.py` | the Windows window (the same page, in pywebview) |
 | `sources.py` | Ticketmaster, the web search prompt, the sorting prompt, place lookups |
 | `listings.py` | Eventbrite, AllEvents and Meetup readers |
+| `rules.py` | sorting by word rules, when Claude Code is not there |
 | `ui.html` | the page |
 | `theme.json` | colours, zoom, corner radius |
 | `run.sh`, `install.sh` | start Marquee on Linux; add it to the app menu |

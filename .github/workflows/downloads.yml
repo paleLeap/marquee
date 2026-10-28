@@ -78,7 +78,7 @@ jobs:
       - name: Pack
         run: |
           mkdir Marquee
-          cp marquee.py sources.py listings.py webwindow.py ui.html theme.json icon.svg \
+          cp marquee.py sources.py listings.py rules.py webwindow.py ui.html theme.json icon.svg \
              run.sh install.sh README.md LICENSE Marquee/
           chmod +x Marquee/run.sh Marquee/install.sh Marquee/marquee.py
           tar -czf Marquee-Linux.tar.gz Marquee
