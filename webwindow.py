@@ -92,9 +92,13 @@ class App:
         # the page runs at zoom 1 and the window is sized in Windows' own (logical) pixels.
         self._theme = {**theme, "zoom": 1, "corner_radius": 0}
         w, h = int(size[0] / zoom), int(size[1] / zoom)
+        x = y = None
         if webview.screens:
+            # Fit the screen with room for the taskbar, and start in the middle of it: left to
+            # Windows, a 1024x768 screen got the window low and running under the taskbar.
             screen = webview.screens[0]
-            w, h = min(w, int(screen.width * 0.9)), min(h, int(screen.height * 0.9))
+            w, h = min(w, int(screen.width * 0.9)), min(h, int(screen.height * 0.85))
+            x, y = (screen.width - w) // 2, max(0, (screen.height - h) // 3)
         self.min_size = (min(int(640 / zoom), w), min(int(700 / zoom), h))
         with open(page, encoding="utf-8") as f:
             html = f.read()
@@ -105,7 +109,7 @@ class App:
         self.window = webview.create_window(
             "Marquee", html=html, js_api=Bridge(self), frameless=True, easy_drag=False,
             width=geometry.get("w", w), height=geometry.get("h", h),
-            x=geometry.get("x"), y=geometry.get("y"), min_size=self.min_size,
+            x=geometry.get("x", x), y=geometry.get("y", y), min_size=self.min_size,
             background_color=theme.get("background") or "#1b2028", text_select=True)
         # Where the window is, kept as it changes: asking the window from inside its own closing
         # handler waits on the thread that is running that handler, and never returns.
