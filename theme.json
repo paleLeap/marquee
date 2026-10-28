@@ -1,0 +1,18 @@
+{
+ "_what": "Marquee's look: Hawthorn's and paleleap.com's tokens (thin type, text only) on dark slate blue-grey. Not retinted by the wallpaper palette, on purpose (2026-10-18: the retint read as too blue). Change a value and restart.",
+ "background": "#19202A",
+ "_alpha": "how solid the slab is. The user found the glass look too see-through (2026-10-18).",
+ "background_alpha": 0.985,
+ "text": "#E6E9EE",
+ "dim": "#8D96A6",
+ "faint": "#586172",
+ "_accent": "pale slate blue: free prices, a chosen star, the scanning pulse. Nothing else.",
+ "accent": "#A3B4CC",
+ "_warm": "failures. No red on this desktop.",
+ "warm": "#C9A27A",
+ "font_size": 15,
+ "_zoom": "zoom scales the whole page: 1.0 is one CSS px per device px on the 4K panel.",
+ "zoom": 1.5,
+ "_corner": "device px. Hawthorn uses 4 at its scale; 6 here is the same softness at zoom 1.5.",
+ "corner_radius": 6
+}

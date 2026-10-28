@@ -1,0 +1,10 @@
+# What each person's Marquee keeps for itself: home, keys, events found, stars, window spot.
+data/
+# The owner's working notes and tools; they stay on the owner's PC.
+LOG.md
+CLAUDE.md
+tools/
+__pycache__/
+*.pyc
+build/
+dist/

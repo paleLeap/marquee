@@ -1,0 +1,118 @@
+# Marquee's downloads: on every version tag (v0.1.0, v0.2.0 ...) GitHub builds Marquee for
+# Windows and packs it for Linux, starts each one once to check the window opens and the page
+# talks to Python, and attaches both to that version's release. The newest is always at
+#   https://github.com/paleLeap/marquee/releases/latest/download/Marquee-Windows.exe
+#   https://github.com/paleLeap/marquee/releases/latest/download/Marquee-Linux.tar.gz
+name: Downloads
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:          # build by hand (no release) from the Actions page
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Marquee's window kit and the packager
+        run: python -m pip install pywebview tzdata pyinstaller
+
+      - name: Package
+        run: pyinstaller --noconfirm packaging/marquee.spec
+
+      - name: Check it opens, and take a picture of it
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\Marquee.exe -ArgumentList '--selftest=20' -PassThru
+          Start-Sleep -Seconds 12
+          try {
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $img = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            [System.Drawing.Graphics]::FromImage($img).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $img.Save("windows-screenshot.png")
+          } catch { Write-Host "No screenshot: $_" }
+          $p.WaitForExit(120000) | Out-Null
+          if (-not $p.HasExited) { $p.Kill(); throw "Marquee.exe --selftest did not finish" }
+          if ($p.ExitCode -ne 0) { throw "Marquee.exe --selftest failed ($($p.ExitCode))" }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-screenshot
+          path: windows-screenshot.png
+          if-no-files-found: ignore
+
+      - name: Name it
+        run: copy dist\Marquee.exe Marquee-Windows.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Marquee-Windows.exe
+          path: Marquee-Windows.exe
+
+  linux:
+    runs-on: ubuntu-22.04      # the oldest still offered, so the check covers older systems
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: What the window needs (what install.sh asks for)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi python3-gi-cairo gir1.2-webkit2-4.1 xvfb
+
+      - name: Check it opens
+        run: xvfb-run -a /usr/bin/python3 marquee.py --selftest
+        env:
+          MARQUEE_DATA: ${{ runner.temp }}/marquee-data
+
+      - name: Pack
+        run: |
+          mkdir Marquee
+          cp marquee.py sources.py listings.py webwindow.py ui.html theme.json icon.svg \
+             run.sh install.sh README.md LICENSE Marquee/
+          chmod +x Marquee/run.sh Marquee/install.sh Marquee/marquee.py
+          tar -czf Marquee-Linux.tar.gz Marquee
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Marquee-Linux.tar.gz
+          path: Marquee-Linux.tar.gz
+
+  release:
+    needs: [windows, linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+          pattern: Marquee-*
+          merge-multiple: true
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          **Windows 10 or 11:** download `Marquee-Windows.exe` and double-click it. Windows may
+          say "Windows protected your PC" because Marquee is new and unsigned: click
+          **More info**, then **Run anyway**.
+
+          **Linux:** download `Marquee-Linux.tar.gz`, extract it, and run `./install.sh` inside
+          the Marquee folder. It puts Marquee in your app menu, or tells you the one command
+          that installs what it needs first.
+
+          Marquee covers the United States. See the README for what each event source needs.
+          EOF
+          gh release create "$GITHUB_REF_NAME" downloads/* --repo "$GITHUB_REPOSITORY" \
+            --title "Marquee ${GITHUB_REF_NAME#v}" --notes-file notes.md

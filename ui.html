@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Marquee</title>
+<style>
+/* Hawthorn's and paleleap.com's language, on slate: hairline Ubuntu Sans, text only, no boxes,
+   no pills, a soft glow on hover instead of a button. The slab is near-opaque dark slate blue-grey;
+   colours come from theme.json and these are the fallbacks. */
+:root {
+  --bg-rgb: 25,32,42; --bg-alpha: .985;
+  --text: #e6e9ee; --dim: #8d96a6; --faint: #586172; --accent: #a3b4cc; --warm: #c9a27a;
+  --glow: rgba(230,233,238,.22); --hair: rgba(141,150,166,.16);
+  --fs: 15px; --radius: 4px;
+  --font: "Ubuntu Sans", "Helvetica Neue", system-ui, sans-serif;
+  --ease: cubic-bezier(.4,0,.2,1);
+}
+* { box-sizing: border-box; min-width: 0; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { color: var(--text); font: 200 var(--fs)/1.5 var(--font); -webkit-user-select: none; cursor: default;
+       -webkit-font-smoothing: antialiased; }
+input, select, button { font: inherit; color: inherit; }
+input { -webkit-user-select: text; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+#slab { position: absolute; inset: 0; border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column;
+        background: rgba(var(--bg-rgb), var(--bg-alpha)); box-shadow: inset 0 0 0 1px var(--hair); }
+
+/* a word you can press: faint, then text with a halo on hover, text when chosen */
+.w { color: var(--faint); transition: color 200ms var(--ease), text-shadow 200ms var(--ease); white-space: nowrap; }
+.w:hover { color: var(--text); text-shadow: 0 0 10px var(--glow); }
+.w.on { color: var(--text); }
+.w:disabled { color: var(--faint); text-shadow: none; cursor: default; }
+
+/* one line: the name, scan | the three tabs, and window controls that only show when the pointer is on them */
+header { display: flex; align-items: baseline; gap: 10px 22px; flex-wrap: wrap; padding: 22px 26px 8px 30px; font-size: 15px; }
+header .bar { color: var(--faint); opacity: .6; }
+header .scan.busy { color: var(--accent); }
+.brand { font-size: 38px; font-weight: 100; letter-spacing: -.5px; color: rgba(230,233,238,.32); line-height: 1; }
+.summary { color: var(--dim); font-size: 14px; margin: 18px 0 0; }
+.summary b { font-weight: 300; color: var(--text); }
+.summary .sep { color: var(--faint); margin: 0 9px; }
+/* window controls: two equal squares in the top right corner, level with the name, shown only
+   while the pointer is on them */
+.wctl { position: absolute; top: 18px; right: 16px; z-index: 5; display: flex; gap: 4px; padding: 4px;
+        opacity: 0; transition: opacity 240ms var(--ease); }
+.wctl:hover { opacity: 1; }
+.wctl button { width: 30px; height: 30px; display: grid; place-items: center; color: var(--dim); border-radius: 4px;
+               transition: color 200ms var(--ease), background 200ms var(--ease); }
+.wctl button:hover { color: var(--text); background: rgba(141,150,166,.12); }
+.wctl svg { width: 12px; height: 12px; display: block; }
+
+
+main { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 30px 18px; }
+main::-webkit-scrollbar { width: 6px; } main::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 3px; }
+.view { display: none; } .view.on { display: block; animation: rise 260ms var(--ease); }
+@keyframes rise { from { opacity: 0; } }
+
+/* Filters and categories show only what is chosen. On hover the box grows downward to show the
+   other choices: in the filters each choice's alternatives drop in below it in its own column;
+   in the categories the rest come in on the lines below. Every hidden choice sits at zero height
+   and grows to one line, so the whole box grows (and shrinks) smoothly with no measuring. */
+.box { margin: 2px 0 6px; }
+.filters { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 10px; font-size: 14px; line-height: 1.8; }
+.opts { display: flex; flex-direction: column; align-items: flex-start; width: 8.5em; }
+.opts .on { order: -1; }
+.box .w { display: block; overflow: hidden; max-height: 1.8em; white-space: nowrap; }
+.cats .w { display: inline-block; }
+.box .w:not(.on) { opacity: 1; transition: max-height 340ms var(--ease), opacity 280ms var(--ease) 60ms, color 200ms var(--ease); }
+.box:not(.open) .w:not(.on) { max-height: 0; opacity: 0; transition: max-height 300ms var(--ease) 40ms, opacity 160ms var(--ease), color 200ms var(--ease); }
+.cats { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 18px; font-size: 14px; line-height: 1.8; }
+.cats .brk { flex-basis: 100%; height: 0; }
+.search { margin-left: auto; margin-top: 2px; width: 8em; background: transparent; border: 0; border-bottom: 1px solid var(--hair); border-radius: 0;
+          padding: 0 0 2px; outline: none; font-size: 14px; transition: border-color 200ms var(--ease), width 300ms var(--ease); }
+.search:focus, .search.has { border-bottom-color: var(--faint); width: 14em; }
+.search::placeholder, input::placeholder { color: var(--faint); }
+.cats sup { font-size: 10px; margin-left: 3px; color: var(--faint); }
+#list > .day:first-child { margin-top: 10px; }
+
+/* the list: lines, not cards */
+.day { display: flex; align-items: baseline; gap: 12px; margin: 22px 0 4px; font-size: 12px; color: var(--faint);
+       letter-spacing: .12em; text-transform: uppercase; }
+.day span { letter-spacing: .02em; text-transform: none; }
+.day.fold { cursor: pointer; transition: color 200ms var(--ease); }
+.day.fold:hover { color: var(--text); text-shadow: 0 0 10px var(--glow); }
+.ev { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto 26px; gap: 0 18px; align-items: baseline;
+      padding: 8px 0; cursor: pointer; }
+.when { color: var(--dim); font-size: 14px; white-space: nowrap; }
+.when small { display: block; color: var(--faint); font-size: 12px; }
+.title { font-size: 17px; font-weight: 300; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+         transition: text-shadow 200ms var(--ease); }
+.ev:hover .title, .ev.open .title { text-shadow: 0 0 10px var(--glow); }
+.meta { color: var(--dim); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta .sep { color: var(--faint); margin: 0 7px; }
+.meta .kind { color: var(--faint); }
+.best { color: var(--accent); font-size: 12px; margin-right: 8px; vertical-align: 2px; }
+.price { text-align: right; font-size: 17px; font-weight: 300; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.price small { display: block; color: var(--faint); font-size: 12px; font-weight: 200; }
+.price.free { color: var(--accent); }
+.price.unknown { color: var(--faint); font-size: 13px; }
+.star { color: transparent; font-size: 15px; transition: color 200ms var(--ease); }
+.ev:hover .star { color: var(--faint); }
+.star:hover { color: var(--text) !important; text-shadow: 0 0 10px var(--glow); }
+.star.on { color: var(--accent) !important; }
+.more { grid-column: 2 / -1; display: none; padding: 6px 0 4px 14px; -webkit-user-select: text; cursor: auto; color: var(--dim); font-size: 14px; }
+.ev.open .more { display: block; animation: rise 260ms var(--ease); }
+.more p { margin: 0 0 6px; }
+.more .faint { color: var(--faint); font-size: 13px; }
+.more .links { display: flex; gap: 20px; margin-top: 8px; -webkit-user-select: none; }
+.more .links .w { color: var(--dim); }
+.more .links .w:hover { color: var(--text); }
+
+.empty { color: var(--faint); padding: 70px 0; text-align: center; }
+.empty b { display: block; color: var(--dim); font-weight: 200; font-size: 22px; margin-bottom: 6px; }
+
+/* settings: labels and underlined fields */
+.sec { margin: 22px 0 30px; max-width: 760px; }
+.sec h3 { margin: 0 0 10px; font-size: 12px; font-weight: 300; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+.sec p { margin: 0 0 10px; color: var(--dim); font-size: 14px; }
+.line { display: flex; gap: 10px 14px; align-items: baseline; flex-wrap: wrap; margin-bottom: 10px; color: var(--dim); font-size: 14px; }
+.field { background: transparent; border: 0; border-bottom: 1px solid var(--hair); border-radius: 0; padding: 3px 0 5px;
+         outline: none; color: var(--text); transition: border-color 200ms var(--ease); }
+.field:focus { border-bottom-color: var(--faint); }
+input[type=number].field { width: 52px; text-align: center; }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+select.field { -webkit-appearance: none; appearance: none; cursor: pointer; padding-right: 6px; }
+select.field option { background: rgb(var(--bg-rgb)); }
+.group { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 0 12px; padding: 7px 0; font-size: 14px; cursor: pointer; }
+.group .name { color: var(--text); text-transform: capitalize; }
+.group .what { color: var(--faint); font-size: 13px; }
+.group .last { color: var(--faint); font-size: 13px; white-space: nowrap; }
+.tick { color: var(--faint); }
+.group.on .tick { color: var(--accent); }
+.bad { color: var(--warm); }
+.link { color: var(--dim); text-decoration: none; border-bottom: 1px solid var(--hair); cursor: pointer; }
+.link:hover { color: var(--text); }
+
+footer { padding: 8px 30px 16px; font-size: 12px; color: var(--faint); }
+footer .busy { color: var(--accent); }
+#toast { position: absolute; left: 30px; right: 30px; bottom: 38px; color: var(--text); font-size: 13px; display: none; z-index: 9;
+         text-shadow: 0 0 10px var(--glow); }
+.pulse { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-right: 8px;
+         animation: pulse 1.4s ease-in-out infinite; vertical-align: 2px; }
+@keyframes pulse { 50% { opacity: .2; } }
+</style>
+</head>
+<body>
+<div id="slab">
+  <header>
+    <div class="brand">Marquee</div>
+    <button class="w scan" id="scan">scan</button>
+    <span class="bar">|</span>
+    <button class="w on" data-tab="list">what's on</button>
+    <button class="w" data-tab="starred">starred<span id="c-star"></span></button>
+    <button class="w" data-tab="settings">settings</button>
+  </header>
+  <div class="wctl">
+    <button id="w-min" aria-label="Minimise"><svg viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+    <button id="w-close" aria-label="Close"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button>
+  </div>
+  <main>
+    <section class="view on" id="v-list">
+      <div class="box" id="filters-box"><div class="filters">
+        <div class="opts" id="when">
+          <button class="w" data-v="weekend">this weekend</button>
+          <button class="w on" data-v="7">7 days</button>
+          <button class="w" data-v="30">30 days</button>
+          <button class="w" data-v="all">all</button>
+        </div>
+        <div class="opts" id="cost">
+          <button class="w on" data-v="any">any price</button>
+          <button class="w" data-v="free">free</button>
+          <button class="w" data-v="25">under $25</button>
+          <button class="w" data-v="50">under $50</button>
+        </div>
+        <div class="opts" id="show">
+          <button class="w on" data-v="all">everything</button>
+          <button class="w" data-v="picks">best picks</button>
+        </div>
+        <div class="opts" id="sort">
+          <button class="w on" data-v="date">soonest</button>
+          <button class="w" data-v="price">cheapest</button>
+          <button class="w" data-v="near">closest</button>
+        </div>
+        <input class="search" id="q" placeholder="search  /">
+      </div></div>
+      <div class="box" id="cats-box"><div class="cats" id="cats"></div></div>
+      <div class="summary" id="summary"></div>
+      <div id="list"></div>
+    </section>
+    <section class="view" id="v-starred"><div id="starred"></div></section>
+    <section class="view" id="v-settings">
+      <div class="sec">
+        <h3>Where</h3>
+        <div class="line">
+          <input class="field" id="s-place" placeholder="town, address or zip" style="flex: 1 1 260px">
+          <button class="w" id="s-find">set</button>
+          <button class="w" id="s-ip">guess from this connection</button>
+        </div>
+        <div class="line">within <input type="number" class="field" id="s-radius" min="5" max="150"> miles, looking
+          <input type="number" class="field" id="s-days" min="7" max="120"> days ahead</div>
+        <p id="s-home" style="color: var(--faint)"></p>
+      </div>
+      <div class="sec">
+        <h3>Listing sites</h3>
+        <p>Eventbrite, AllEvents and Meetup are read directly, day by day: this is where the small, niche and one-off things are.
+          Reading is free. Every new event is then filed and rated by a quick Claude run (Haiku, about a cent per hundred events),
+          which drops job fairs, seminars and ads, and marks the standouts ✦.</p>
+        <div id="s-sites"></div>
+        <div class="line" style="margin-top: 10px">also read <input class="field" id="s-towns" placeholder="Austin, TX; Round Rock, TX" style="flex: 1 1 300px"></div>
+        <div class="line"><input type="number" class="field" id="s-ldays" min="1" max="30"> days ahead,
+          <input type="number" class="field" id="s-lpages" min="1" max="20"> Eventbrite pages a day, every
+          <input type="number" class="field" id="s-lh" min="0" max="168"> hours</div>
+        <div class="line"><button class="w" id="s-read">read them now</button></div>
+      </div>
+      <div class="sec">
+        <h3>Ticketmaster</h3>
+        <p>Concerts, sports, theatre and family shows, with ticket prices when the seller lists them. It needs a free key:
+          sign up at <span class="link" data-open="https://developer-acct.ticketmaster.com/user/register">developer.ticketmaster.com</span>,
+          then copy the Consumer Key from My Apps and paste it here. Without one, Marquee still works from the web scan.</p>
+        <div class="line">
+          <input class="field" id="s-tm" placeholder="consumer key" style="flex: 1 1 320px">
+          refresh every <input type="number" class="field" id="s-tm-h" min="0" max="168"> hours
+        </div>
+        <p id="s-tm-last" style="color: var(--faint)"></p>
+      </div>
+      <div class="sec">
+        <h3>Web scan</h3>
+        <p>Claude Code searches the web, one search per line below, four at a time. Each takes a few minutes and uses
+          about $1.50 of Claude usage on Sonnet, so untick what you never want. Every search is told what is already
+          on the list, so a rescan brings new things. Finds stay until the event is over. The scan button at the top
+          does not run these; they run on their own schedule or from here.</p>
+        <div id="s-groups"></div>
+        <div class="line" style="margin-top: 12px">up to <input type="number" class="field" id="s-count" min="5" max="40"> events per search,
+          every <input type="number" class="field" id="s-web-d" min="0" max="30"> days, with
+          <select class="field" id="s-model"><option value="sonnet">Sonnet</option><option value="opus">Opus</option><option value="haiku">Haiku</option></select></div>
+        <p style="color: var(--faint)">0 days or hours means only when you press scan.</p>
+        <div class="line"><button class="w" id="s-scan-web">run the web scan now</button><button class="w" id="s-forget">forget web finds</button></div>
+      </div>
+      <div class="sec">
+        <h3>Hidden</h3>
+        <div class="line"><span id="s-hidden"></span><button class="w" id="s-unhide">show them again</button></div>
+      </div>
+    </section>
+  </main>
+  <footer id="status"></footer>
+  <div id="toast"></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SEP = `<span class="sep">·</span>`;
+
+// ---- bridge to the Python side ------------------------------------------------------------
+let rid = 0; const waiting = {};
+function rpc(method, ...args) {
+  return new Promise((resolve, reject) => {
+    const id = ++rid; waiting[id] = {resolve, reject};
+    // Windows (webwindow.py) supplies marqueePost; the Linux window is WebKit's own handler.
+    const msg = JSON.stringify({id, method, args});
+    window.marqueePost ? window.marqueePost(msg) : window.webkit.messageHandlers.marquee.postMessage(msg);
+  });
+}
+window.fromApp = (kind, data) => {
+  if (kind === "reply") { const w = waiting[data.id]; delete waiting[data.id]; if (!w) return; data.error ? w.reject(new Error(data.error)) : w.resolve(data.result); }
+  else if (kind === "theme") applyTheme(data);
+  else if (kind === "events") refresh();
+  else if (kind === "scan") { S && (S.running = data.running); status(); }
+  else if (kind === "progress") { progress[data.name] = data.text; status(); }
+  else if (kind === "scan_error") toast(`${label(data.name)}: ${data.error}`);
+};
+function toast(text) { const t = $("toast"); t.textContent = text; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 5000); }
+const tryRpc = (...a) => rpc(...a).catch(e => { toast(String(e.message || e)); throw e; });
+
+// ---- state --------------------------------------------------------------------------------
+let S = null, tab = "list", when = "7", cost = "any", sort = "date", show = "all", cats = new Set(), opened = null;
+const pick = e => (e.score ?? 1) >= 2;
+async function refresh() { S = await rpc("state"); render(); }
+
+const day = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+function weekend(today) {   // Friday to Sunday; from Friday on, it is this one
+  const t = day(today), dow = t.getDay();
+  const fri = dow === 5 || dow === 6 || dow === 0 ? addDays(t, -((dow + 2) % 7)) : addDays(t, 5 - dow);
+  return [iso(fri < t ? t : fri), iso(addDays(fri, 2))];
+}
+function range() {
+  if (when === "weekend") return weekend(S.today);
+  if (when === "all") return [S.today, "9999"];
+  return [S.today, iso(addDays(day(S.today), Number(when) - 1))];
+}
+const overlaps = (e, [a, b]) => e.start <= b && (e.end || e.start) >= a;
+const isFree = e => e.free || (e.price_min === 0 && !e.price_max);
+function priceOk(e) {
+  if (cost === "any") return true;
+  if (cost === "free") return isFree(e);
+  return isFree(e) || (e.price_min != null && e.price_min <= Number(cost));
+}
+const hidden = () => new Set(S.marks.hide), starred = () => new Set(S.marks.star);
+
+function shown() {
+  const q = $("q").value.trim().toLowerCase(), r = range(), hide = hidden();
+  return S.events.filter(e => !hide.has(e.id) && overlaps(e, r) && priceOk(e) && (!cats.size || cats.has(e.category)) &&
+    (show === "all" || pick(e)) &&
+    (!q || `${e.title} ${e.venue} ${e.city} ${e.summary} ${S.categories[e.category]}`.toLowerCase().includes(q)));
+}
+function sorted(list) {
+  const far = 1e9;
+  if (sort === "price") return [...list].sort((a, b) => (isFree(a) ? 0 : a.price_min ?? far) - (isFree(b) ? 0 : b.price_min ?? far));
+  if (sort === "near") return [...list].sort((a, b) => (a.miles ?? far) - (b.miles ?? far));
+  return list;
+}
+
+// ---- drawing ------------------------------------------------------------------------------
+const money = n => "$" + (n >= 100 ? Math.round(n) : Number(n).toFixed(n % 1 ? 2 : 0)).toLocaleString("en-US");
+function priceHtml(e) {
+  if (isFree(e)) return `<div class="price free">free</div>`;
+  if (e.price_min != null) {
+    const top = e.price_max && e.price_max > e.price_min ? `<small>to ${money(e.price_max)}</small>` : "";
+    return `<div class="price">${money(e.price_min)}${top}</div>`;
+  }
+  const said = e.price_text && e.price_text.length <= 18 ? e.price_text : "see page";
+  return `<div class="price unknown">${esc(said)}</div>`;
+}
+const running = e => e.start < S.today;   // an exhibit that opened before today
+const short = s => { const d = day(s); return `${MON[d.getMonth()]} ${d.getDate()}`; };
+function whenHtml(e) {
+  if (running(e) && e.end && e.end !== e.start) return `<div class="when">until<small>${short(e.end)}</small></div>`;
+  // Under a day heading the date is already said: the column gives the start time instead.
+  if (sort === "date" && tab === "list") {
+    const [t, ap] = (e.time || "").split(/\s*(?=[AP]M)/);
+    return e.time ? `<div class="when">${esc(t)}<small>${esc(ap || "")}</small></div>` : `<div class="when"><small>any time</small></div>`;
+  }
+  const d = day(e.start);
+  return `<div class="when">${DOW[d.getDay()]} ${d.getDate()}<small>${MON[d.getMonth()]}</small></div>`;
+}
+function evHtml(e) {
+  const stars = starred();
+  const meta = [`<span class="kind">${esc((S.categories[e.category] || "Other").toLowerCase())}</span>`,
+    ...[e.venue, e.city].filter(Boolean).map(esc),
+    ...[sort === "date" && tab === "list" ? "" : e.time, !running(e) && e.end && e.end !== e.start ? `through ${short(e.end)}` : "",
+        e.miles != null ? `${Math.round(e.miles)} mi` : ""].filter(Boolean).map(esc)].join(SEP);
+  const map = encodeURIComponent([e.venue, e.address, e.city].filter(Boolean).join(", "));
+  return `<div class="ev ${opened === e.id ? "open" : ""}" data-id="${esc(e.id)}">
+    ${whenHtml(e)}
+    <div><div class="title">${e.score === 3 ? `<span class="best" title="stands out">✦</span>` : ""}${esc(e.title)}</div><div class="meta">${meta}</div></div>
+    ${priceHtml(e)}
+    <button class="star ${stars.has(e.id) ? "on" : ""}" data-star="${esc(e.id)}" title="Star">${stars.has(e.id) ? "★" : "☆"}</button>
+    <div class="more">
+      ${e.summary ? `<p>${esc(e.summary)}</p>` : ""}
+      ${e.address ? `<p class="faint">${esc(e.address)}${e.city ? ", " + esc(e.city) : ""}</p>` : ""}
+      ${e.price_text ? `<p class="faint">Price: ${esc(e.price_text)}</p>` : ""}
+      <p class="faint">From ${esc(e.source)}, found ${esc((e.found || "").slice(0, 10))}. Dates and prices change; check the page before you go.</p>
+      <div class="links">
+        ${e.url ? `<button class="w" data-open="${esc(e.url)}">open page</button>` : ""}
+        ${map ? `<button class="w" data-open="https://www.google.com/maps/search/?api=1&query=${map}">map</button>` : ""}
+        <button class="w" data-hide="${esc(e.id)}">hide</button>
+      </div>
+    </div>
+  </div>`;
+}
+function dayLabel(s) {
+  const d = day(s), n = Math.round((d - day(S.today)) / 864e5), date = short(s);
+  if (n === 0) return ["Today", `${DAYS[d.getDay()]} ${date}`];
+  if (n === 1) return ["Tomorrow", `${DAYS[d.getDay()]} ${date}`];
+  if (n < 7) return [DAYS[d.getDay()], date];
+  return [`${DOW[d.getDay()]} ${date}`, ""];
+}
+let showOn = false;
+try { showOn = localStorage.getItem("marquee.on-now") === "1"; } catch (_) {}
+function listHtml(list) {
+  if (sort !== "date") return list.map(evHtml).join("");
+  // Dated events first: they are what a quick look is for. Exhibits already open go last, folded.
+  const on = list.filter(running), rest = list.filter(e => !running(e));
+  let out = "", last = null;
+  for (const e of rest) {
+    if (e.start !== last) { const [a, b] = dayLabel(e.start); out += `<div class="day">${esc(a)}<span>${esc(b)}</span></div>`; last = e.start; }
+    out += evHtml(e);
+  }
+  if (on.length) {
+    out += `<div class="day fold" id="fold">${showOn ? "▾" : "▸"} On now<span>${on.length} exhibit${on.length === 1 ? "" : "s"} and runs already open</span></div>`;
+    if (showOn) out += on.map(evHtml).join("");
+  }
+  return out;
+}
+function emptyHtml() {
+  if (S.running.length) return `<div class="empty"><b>Scanning</b>The first results show up as each search finishes.</div>`;
+  if (!S.events.length) return `<div class="empty"><b>Nothing found yet</b>Press scan to look around ${esc(S.settings.home?.name || "home")}.</div>`;
+  return `<div class="empty"><b>Nothing matches</b>Try more days, any price, or clear the search.</div>`;
+}
+
+function render() {
+  if (!S) return;
+  const hide = hidden(), live = S.events.filter(e => !hide.has(e.id));
+  const wk = live.filter(e => overlaps(e, weekend(S.today))).length, free = live.filter(e => isFree(e) && overlaps(e, range())).length;
+  $("summary").innerHTML = (S.settings.home ? `<b>${esc(S.settings.home.name)}</b>, ${S.settings.radius} mi` : "location not set") +
+    SEP + `<b>${wk}</b> this weekend` + SEP + `<b>${free}</b> free` + SEP + `<b>${live.length}</b> found`;
+  $("c-star").textContent = S.marks.star.length ? " " + S.marks.star.length : "";
+
+  // categories, counted against the other filters
+  const r = range(), counts = {};
+  live.filter(e => overlaps(e, r) && priceOk(e)).forEach(e => counts[e.category] = (counts[e.category] || 0) + 1);
+  // chosen first, on the top line; everything else on the lines below, shown when the box grows
+  const catBtn = (k, v) => `<button class="w ${(k ? cats.has(k) : !cats.size) ? "on" : ""}" data-cat="${k}">${esc(v.toLowerCase())}${k ? `<sup>${counts[k] || 0}</sup>` : ""}</button>`;
+  const all = [["", "everything"], ...Object.entries(S.categories).filter(([k]) => counts[k] || cats.has(k))];
+  const isOn = ([k]) => k ? cats.has(k) : !cats.size;
+  $("cats").innerHTML = all.filter(isOn).map(c => catBtn(...c)).join("") + `<span class="brk"></span>` +
+    all.filter(c => !isOn(c)).map(c => catBtn(...c)).join("");
+
+  const list = sorted(shown());
+  $("list").innerHTML = list.length ? listHtml(list) : emptyHtml();
+  const stars = starred(), fav = S.events.filter(e => stars.has(e.id));
+  $("starred").innerHTML = fav.length ? fav.map(evHtml).join("") : `<div class="empty"><b>Nothing starred</b>Press ☆ on anything you might go to and it waits here.</div>`;
+  if (tab === "settings") fillSettings();
+  status();
+}
+
+const NAMES = {ticketmaster: "Ticketmaster", eventbrite: "Eventbrite", allevents: "AllEvents", meetup: "Meetup", sorting: "sorting"};
+const label = name => NAMES[name] || (name.startsWith("web:") ? "web " + name.slice(4) : name);
+function ago(stamp) {
+  if (!stamp) return "never";
+  const m = Math.round((Date.now() - new Date(stamp.replace(" ", "T"))) / 60000);
+  return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago";
+}
+const progress = {};
+function status() {
+  if (!S) return;
+  const run = S.running || [];
+  $("scan").disabled = run.length > 0;
+  $("scan").textContent = run.length ? "scanning" : "scan";
+  $("scan").classList.toggle("busy", run.length > 0);
+  if (run.length) {
+    const said = run.map(n => progress[n] || label(n)).map(esc).join(", ");
+    $("status").innerHTML = `<span class="busy"><span class="pulse"></span>${said}</span>`; return;
+  }
+  const parts = Object.entries(S.scans).filter(([k]) => !k.startsWith("web:") && k !== "sorting").sort().map(([k, v]) =>
+    `${esc(label(k))} ${ago(v.at)}${v.error ? ` <span class="bad">failed</span>` : ` (${v.count ?? 0})`}`);
+  const web = Object.entries(S.scans).filter(([k]) => k.startsWith("web:")).map(([, v]) => v.at).sort().pop();
+  if (web) parts.push(`web search ${ago(web)}`);
+  $("status").innerHTML = parts.length ? "last scanned: " + parts.join(", ") : "not scanned yet";
+}
+
+function fillSettings() {
+  const s = S.settings, focus = document.activeElement;
+  const set = (id, v) => { if ($(id) !== focus) $(id).value = v; };
+  set("s-radius", s.radius); set("s-days", s.days_ahead); set("s-tm", s.ticketmaster_key || "");
+  set("s-tm-h", s.tm_every_hours); set("s-count", s.web_count); set("s-web-d", s.web_every_days); set("s-model", s.scan_model || "sonnet");
+  $("s-home").textContent = s.home ? `Searching around ${s.home.name} (${s.home.lat.toFixed(3)}, ${s.home.lon.toFixed(3)}).` : "Not set yet.";
+  const tm = S.scans.ticketmaster;
+  $("s-tm-last").innerHTML = tm ? `Last run ${ago(tm.at)}: ${tm.error ? `<span class="bad">${esc(tm.error)}</span>` : `${tm.count} events.`}` : "";
+  $("s-groups").innerHTML = Object.entries(S.groups).map(([g, what]) => {
+    const r = S.scans["web:" + g], on = s.web_groups.includes(g);
+    const last = r ? `${ago(r.at)}, ${r.error ? `<span class="bad">failed</span>` : `${r.count} found`}` : "not run yet";
+    return `<div class="group ${on ? "on" : ""}" data-group="${g}"><span class="tick">${on ? "●" : "○"}</span>
+      <span><span class="name">${esc(g)}</span><br><span class="what">${esc(what)}</span>${r && r.error ? `<br><span class="what bad">${esc(r.error)}</span>` : ""}</span>
+      <span class="last">${last}</span></div>`;
+  }).join("");
+  set("s-towns", (s.extra_towns || []).join("; ")); set("s-ldays", s.listing_days); set("s-lpages", s.listing_pages); set("s-lh", s.listings_every_hours);
+  $("s-sites").innerHTML = S.sites.map(n => {
+    const r = S.scans[n], on = (s.listing_sites || []).includes(n);
+    const last = r ? `${ago(r.at)}, ${r.error ? `<span class="bad">failed</span>` : `${r.count} events`}` : "not read yet";
+    return `<div class="group ${on ? "on" : ""}" data-site="${n}"><span class="tick">${on ? "●" : "○"}</span>
+      <span><span class="name">${esc(label(n))}</span>${r && r.error ? `<br><span class="what bad">${esc(r.error)}</span>` : ""}</span>
+      <span class="last">${last}</span></div>`;
+  }).join("");
+  $("s-hidden").textContent = S.marks.hide.length ? `${S.marks.hide.length} event${S.marks.hide.length === 1 ? "" : "s"} hidden.` : "Nothing hidden.";
+  $("s-unhide").disabled = !S.marks.hide.length;
+}
+async function saveSettings(groups, sites) {
+  const num = id => Number($(id).value || 0);
+  S.settings = await tryRpc("save_settings", {
+    radius: num("s-radius"), days_ahead: num("s-days"), ticketmaster_key: $("s-tm").value,
+    tm_every_hours: num("s-tm-h"), web_count: num("s-count"), web_every_days: num("s-web-d"), scan_model: $("s-model").value,
+    web_groups: groups || S.settings.web_groups, listing_sites: sites || S.settings.listing_sites,
+    extra_towns: $("s-towns").value, listing_days: num("s-ldays"), listing_pages: num("s-lpages"), listings_every_hours: num("s-lh"),
+  });
+  render();
+}
+
+// ---- input --------------------------------------------------------------------------------
+document.querySelectorAll("header [data-tab]").forEach(b => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll("header [data-tab]").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + tab));
+  render();
+});
+function opts(id, set) {
+  $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
+    $(id).querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); set(b.dataset.v); render();
+  });
+}
+opts("when", v => when = v);
+opts("cost", v => cost = v);
+opts("sort", v => sort = v);
+opts("show", v => show = v);
+$("q").oninput = () => { $("q").classList.toggle("has", !!$("q").value); render(); };
+
+// Open a box once the pointer has rested on it a moment (a pass across it does nothing); close
+// it a moment after the pointer leaves.
+const OPEN_AFTER = 260, CLOSE_AFTER = 160;
+document.querySelectorAll(".box").forEach(box => {
+  box.addEventListener("mouseenter", () => { clearTimeout(box.t); box.t = setTimeout(() => box.classList.add("open"), OPEN_AFTER); });
+  box.addEventListener("mouseleave", () => { clearTimeout(box.t); box.t = setTimeout(() => box.classList.remove("open"), CLOSE_AFTER); });
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); $("q").focus(); }
+  if (e.key === "Escape" && document.activeElement === $("q")) { $("q").value = ""; $("q").classList.remove("has"); $("q").blur(); render(); }
+});
+
+document.addEventListener("click", async e => {
+  const t = e.target;
+  const open = t.closest("[data-open]");
+  if (open) { e.stopPropagation(); return tryRpc("open", open.dataset.open); }
+  const star = t.closest("[data-star]");
+  if (star) { const id = star.dataset.star; S.marks = await tryRpc("mark", id, "star", !starred().has(id)); return render(); }
+  const hide = t.closest("[data-hide]");
+  if (hide) { S.marks = await tryRpc("mark", hide.dataset.hide, "hide", true); opened = null; toast("Hidden. Settings can bring it back."); return render(); }
+  const site = t.closest("[data-site]");
+  if (site) {
+    const n = site.dataset.site, now = S.settings.listing_sites || [];
+    return saveSettings(null, now.includes(n) ? now.filter(x => x !== n) : [...now, n]);
+  }
+  const group = t.closest("[data-group]");
+  if (group) {
+    const g = group.dataset.group, now = S.settings.web_groups;
+    return saveSettings(now.includes(g) ? now.filter(x => x !== g) : [...now, g]);
+  }
+  if (t.closest("#fold")) {
+    showOn = !showOn;
+    try { localStorage.setItem("marquee.on-now", showOn ? "1" : "0"); } catch (_) {}
+    return render();
+  }
+  const cat = t.closest("[data-cat]");
+  if (cat) {
+    const k = cat.dataset.cat;
+    if (!k) cats.clear(); else if (cats.has(k)) cats.delete(k); else cats.add(k);
+    return render();
+  }
+  const ev = t.closest(".ev");
+  if (ev && !t.closest(".more")) { opened = opened === ev.dataset.id ? null : ev.dataset.id; return render(); }
+});
+
+$("scan").onclick = async () => { try { await tryRpc("scan"); } catch (_) {} };
+$("s-read").onclick = async () => { try { await tryRpc("scan", ["lists"]); toast("Reading the listing sites."); } catch (_) {} };
+$("s-scan-web").onclick = async () => { try { await tryRpc("scan", ["web"]); toast("Web scan started."); } catch (_) {} };
+$("s-forget").onclick = async () => { await tryRpc("forget_web"); toast("Web finds cleared."); refresh(); };
+$("s-unhide").onclick = async () => { for (const id of S.marks.hide) await rpc("mark", id, "hide", false); refresh(); };
+$("s-find").onclick = async () => {
+  try { await tryRpc("set_place", $("s-place").value); $("s-place").value = ""; toast("Location set. Press scan to look around it."); refresh(); } catch (_) {}
+};
+$("s-place").onkeydown = e => { if (e.key === "Enter") $("s-find").click(); };
+$("s-ip").onclick = async () => { try { await tryRpc("set_place", ""); refresh(); } catch (_) {} };
+$("v-settings").addEventListener("change", e => { if (e.target.id !== "s-place") saveSettings(); });
+
+$("w-min").onclick = () => rpc("minimize");
+$("w-close").onclick = () => rpc("close");
+
+// Window furniture, as in plinth: drag from any bare spot, resize from the edges.
+const GRIP = 8, CONTROLS = "button, input, select, a, .ev, .group, .fold, .link, .w, [data-site]";
+function edgeAt(e) {
+  const w = innerWidth, h = innerHeight, x = e.clientX, y = e.clientY;
+  return (y < GRIP ? "n" : y > h - GRIP ? "s" : "") + (x < GRIP ? "w" : x > w - GRIP ? "e" : "");
+}
+const CURSOR = {n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize", nw: "nwse-resize", se: "nwse-resize", ne: "nesw-resize", sw: "nesw-resize"};
+document.addEventListener("mousemove", e => { const ed = edgeAt(e); document.body.style.cursor = ed ? CURSOR[ed] : ""; });
+document.addEventListener("mousedown", e => {
+  if (e.button !== 0) return;
+  const ed = edgeAt(e);
+  if (ed) { e.preventDefault(); rpc("resize", ed); return; }
+  if (e.target.closest(CONTROLS)) return;
+  if (e.target.closest("header, footer, .day, .summary") || e.target === document.querySelector("main") || e.target.classList.contains("view")) rpc("drag");
+});
+
+// Colours from theme.json (no wallpaper retint: the slate is meant to stay slate).
+function hexRgb(h) { h = String(h || "").replace("#", ""); return h.length === 6 ? [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)).join(",") : null; }
+function applyTheme(t) {
+  if (!t) return;
+  const r = document.documentElement.style, set = (k, v) => v != null && v !== "" && r.setProperty(k, v);
+  set("--bg-rgb", hexRgb(t.background)); set("--bg-alpha", t.background_alpha);
+  set("--text", t.text); set("--dim", t.dim); set("--faint", t.faint); set("--accent", t.accent); set("--warm", t.warm);
+  if (t.font_size) set("--fs", t.font_size + "px");
+  // The page is zoomed; the corner is cut in device pixels, so the slab's radius is divided back.
+  if (t.corner_radius != null) set("--radius", (t.corner_radius / (t.zoom || 1)) + "px");
+}
+rpc("theme").then(applyTheme);
+refresh().then(() => rpc("start"));
+setInterval(() => S && !S.running.length && render(), 60 * 1000);   // "3 min ago" and Today roll over
+</script>
+</body>
+</html>
